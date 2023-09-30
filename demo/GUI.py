@@ -1,7 +1,5 @@
 # https://daeudaeu.com/tkinter-othello/#explanation
-
 import sys
-import os
 sys.path.append('../')
 import tkinter
 import tkinter.messagebox
@@ -9,7 +7,6 @@ from creversi import *
 import torch
 from model.networks import *
 import matplotlib.pyplot as plt
-
 
 # キャンバスの横方向・縦方向のサイズ（px）
 CANVAS_SIZE = 400
@@ -25,7 +22,7 @@ COM = 2
 COM_WAIT_TIME = 1
 
 # 先手・後手
-FIRST = YOU
+FIRST = COM
 
 # 色の設定
 BOARD_COLOR = 'green' # 盤面の背景色
@@ -37,18 +34,20 @@ else:
     YOUR_COLOR = 'white' # あなたの石の色
     COM_COLOR = 'black' # 相手の石の色
 
-class Othello():
+class OthelloMaster:
     def __init__(self, master):
         '''コンストラクタ'''
-
         self.master = master # 親ウィジェット
         self.player = FIRST # 次に置く石の色
         self.board = None # 盤面上の石を管理する２次元リスト
         self.board_inner = None # 内部処理用の盤面
-        self.model_pol = torch.load('../model/policy-network-v3.pth') # 方策モデル
-        # self.model_val = torch.load('../model/value-network-v1-checkpoint.pth') # 価値モデル
-        self.model_val_list = [torch.load(f'../model/results/{f}') for f in os.listdir('../model/results')]
-        self.val_list = None # 価値モデルの評価値のリスト
+        self.model_pol = PolicyNetwork()
+        self.model_pol.load_state_dict(torch.load('../model/policy-network-v3.pth')) # 方策モデル
+        self.model_pol.eval()
+        self.model_val = ValueNetwork()
+        self.model_val.load_state_dict(torch.load('../model/value-network-v4.pth')) # 価値モデル
+        self.model_val.eval()
+        self.val_list = [np.array([0]*8)] # 価値モデルの評価値のリスト
         self.color = { # 石の色を保持する辞書
             YOU : YOUR_COLOR,
             COM : COM_COLOR
@@ -89,7 +88,6 @@ class Othello():
         # 盤面上の石を管理する２次元リストを作成（最初は全てNone）
         self.board = [[None] * NUM_SQUARE for i in range(NUM_SQUARE)]
         self.board_inner = Board()
-        self.val_list = [[0]*len(self.model_val_list)]
 
         # １マスのサイズ（px）を計算
         self.square_size = CANVAS_SIZE // NUM_SQUARE
@@ -275,24 +273,12 @@ class Othello():
 
         # 内部処理
         self.board_inner.move(8*y+x)
-        # value = self.model_val(torch.from_numpy(board_to_array2(self.board_inner)).unsqueeze(0)).detach().numpy()[0][0]
-        tmp = []
-        for model_val in self.model_val_list:
-            board_arr = board_to_array2(self.board_inner)
-            arr = [board_arr, np.flip(board_arr, axis=2).copy()]
-            for k in range(1,4):
-                board_rot = np.rot90(board_arr, k=k, axes=(1,2)).copy()
-                arr.append(board_rot)
-                arr.append(np.flip(board_rot, axis=2).copy())
-            arr = np.array(arr)
-            value = model_val(torch.from_numpy(arr)).detach().numpy().mean()
-            tmp.append(value)
-        # print(f'手番={"黒" if self.board_inner.turn else "白"}  評価値: {value*100:.1f}({move_to_str(8*y+x)}:{(value-self.val_list[-1])*100:.1f})')
-        print(f'手番={"黒" if self.board_inner.turn else "白"}  評価値: {np.mean(tmp)*100:.1f}({move_to_str(8*y+x)}:{(np.mean(tmp)-np.mean(self.val_list[-1]))*100:.1f})')
-        # self.val_list.append(value)
-        self.val_list.append(tmp)
+        with torch.no_grad():
+            value = self.model_val(board_to_array_aug2(self.board_inner,True)).numpy()
+        print(f'手番={"黒" if self.board_inner.turn else "白"}  評価値: {np.mean(value)*64:.1f}({move_to_str(8*y+x)}:{(np.mean(value)-np.mean(self.val_list[-1]))*64:.1f})')
+        self.val_list.append(value.ravel())
         bar_length = 50
-        filled_length = int(bar_length * (value + 1) / 2)
+        filled_length = int(bar_length * (np.mean(value) + 1) / 2)
         empty_length = bar_length - filled_length
         progress_bar = '▮' * filled_length + '▯' * empty_length
         print(progress_bar)
@@ -423,29 +409,23 @@ class Othello():
 
         # 評価値の推移をグラフで表示
         plt.figure(figsize=(4,1))
+        self.val_list = np.array(self.val_list) * 64
         plt.plot(self.val_list, c='red')
-        plt.plot(np.mean(self.val_list, axis=1), c='blue')
-        plt.ylim(-1, 1)
+        plt.plot(self.val_list.mean(axis=1), c='blue')
+        plt.ylim(-64, 64)
         plt.axhline(0, c='black', ls='--')
         plt.show()
 
     def com(self):
-        '''COMに石を置かせる'''
-
-        # 石が置けるマスを取得
-        legal_moves = list(self.board_inner.legal_moves)
-        
-        # 最初のマスを次に石を置くマスとする
-        output = self.model_pol(torch.from_numpy(board_to_array(self.board_inner)).unsqueeze(0)).detach().numpy()
-        prob_legal = output[0][legal_moves]
-        move = legal_moves[np.argmax(prob_legal)]
+        '''
+        move = ...... # COMの次の手を決める処理
         x, y = move%8, move//8
-        
-        # 石を置く
         self.place(x, y, COM_COLOR)
+        '''
+        raise NotImplementedError
 
 # スクリプト処理ここから
-app = tkinter.Tk()
-app.title('othello')
-othello = Othello(app)
-app.mainloop()
+# app = tkinter.Tk()
+# app.title('othello')
+# othello = Othello(app)
+# app.mainloop()
