@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import numpy as np
 from copy import copy
@@ -67,24 +68,34 @@ class ValueNetwork(nn.Module):
         self.hidden_layer = nn.Sequential(
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.ReLU(),
+            nn.BatchNorm2d(n_filters),
             nn.Conv2d(n_filters,n_filters,kernel_size=3,padding=1),
             nn.Conv2d(n_filters,n_filters,kernel_size=1,padding=1),
             nn.Flatten()
@@ -102,9 +113,9 @@ class ValueNetwork(nn.Module):
         return out.tanh()
 
     
-def board_to_array(board):
+def board_to_array(board, return_torch=False):
     """
-    boardオブジェクトからndarrayに変換する関数。
+    boardオブジェクトからndarrayに変換する関数(PolicyNetwork用)。
     第1チャンネルは黒石の位置、第2チャンネルに白石の位置、第3チャンネルに空白の位置、
     第4チャンネルに合法手の位置、第5チャンネルに返せる石の個数、第6チャンネルに隅=1、
     第7チャンネルに1埋め、第8チャンネルに0埋め。
@@ -133,9 +144,11 @@ def board_to_array(board):
                      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
                      1., 1., 0., 0., 0., 0., 1., 1., 1., 1., 0., 0., 0., 0., 1., 1.]).reshape(8,8)
     b[6] = 1
+    if return_torch:
+        return torch.from_numpy(b)
     return b
 
-def board_to_array2(board):
+def board_to_array2(board, return_torch=False):
     """
     boardオブジェクトからndarrayに変換する関数(ValueNetwork用)。
     第1チャネルは黒石の位置、第2チャネルに白石の位置、第3チャネルに空白の位置、
@@ -167,4 +180,23 @@ def board_to_array2(board):
                      0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
                      1., 1., 0., 0., 0., 0., 1., 1., 1., 1., 0., 0., 0., 0., 1., 1.]).reshape(8,8)
     b[6] = 1
+    if return_torch:
+        return torch.from_numpy(b)
     return b
+
+def board_to_array_aug2(board, return_torch=False):
+    """
+    boardオブジェクトから,8通りのデータ拡張を行ったndarrayへ変換する関数(ValueNetwork用)。
+    """
+    boards = []
+    board_array = board_to_array2(board)
+    boards.append(board_array)
+    boards.append(np.flip(board_array,axis=2).copy())
+    for k in range(1,4):
+        board_array_rot = np.rot90(board_array, k=k, axes=(1,2)).copy()
+        boards.append(board_array_rot)
+        boards.append(np.flip(board_array_rot, axis=2).copy())
+    if return_torch:
+        return torch.from_numpy(np.array(boards))
+    else:
+        return np.array(boards)
